@@ -374,7 +374,10 @@ settings = EpicSettings()
 
 # 记录当前配置
 logger.info(f"🎯 API 提供商: {API_PROVIDER}")
-logger.info(f"🔐 验证码模型: {settings.CAPTCHA_MODEL} (备用: {settings.CAPTCHA_MODEL_FALLBACK})")
+if os.getenv("EPIC_CAPTCHA_MODE") == "manual":
+    logger.info("🔐 人机验证模式：由用户在 Epic 官方页面亲自完成")
+else:
+    logger.info(f"🔐 验证码模型: {settings.CAPTCHA_MODEL} (备用: {settings.CAPTCHA_MODEL_FALLBACK})")
 logger.info(f"🤖 主力模型: {settings.PRIMARY_MODEL} (备用: {settings.PRIMARY_MODEL_FALLBACK})")
 
 # ==========================================

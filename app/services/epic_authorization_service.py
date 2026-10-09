@@ -90,6 +90,9 @@ class ErrorType(Enum):
 
     # 账号开启了两步验证 - 自动化无法完成邮箱验证码环节，需用户自行关闭
     TWO_FACTOR_REQUIRED = "two_factor_required"
+    NATIVE_AUTH_EXPIRED = "native_auth_expired"
+    NATIVE_AUTH_FAILED = "native_auth_failed"
+    NATIVE_WEB_SESSION_FAILED = "native_web_session_failed"
 
     # 未知错误 - 需要用户查看日志
     UNKNOWN = "unknown"
@@ -194,6 +197,8 @@ class EpicAuthorization:
         不可见时直接 refresh_challenge，否则会点击隐藏刷新按钮并报
         "Element is not visible or does not exist"。
         """
+        if os.getenv("EPIC_CAPTCHA_MODE") == "manual":
+            return
         deadline = time.monotonic() + timeout_ms / 1000
         checkbox_clicked = False
 
@@ -518,6 +523,9 @@ class EpicAuthorization:
             - (False, ErrorType.LOGIN_TIMEOUT): 登录超时
             - None: 异常情况
         """
+        if os.getenv("EPIC_AUTH_METHOD") == "epic_oauth":
+            return (False, ErrorType.NATIVE_WEB_SESSION_FAILED)
+
         # 重置错误码
         self._login_error_code = None
 

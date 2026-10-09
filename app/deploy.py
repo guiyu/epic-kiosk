@@ -17,6 +17,9 @@ import signal
 import sys
 from contextlib import suppress
 from datetime import datetime
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -32,6 +35,9 @@ from services.epic_games_service import _is_driver_disconnect_error
 from settings import LOG_DIR, RECORD_DIR, RUNTIME_DIR
 from settings import settings
 from utils import cleanup_debug_artifacts, init_log
+from app.epic_native_auth import bootstrap_browser, NativeAuthError
+from app.secure_store import CredentialCipher
+import httpx
 
 # Initialize logging configuration
 init_log(
@@ -146,6 +152,35 @@ async def execute_browser_tasks(headless: bool = True) -> ErrorType:
             # Initialize or reuse existing browser page
             page = browser.pages[0] if browser.pages else await browser.new_page()
             logger.debug("Browser initialized successfully")
+
+            if os.getenv("EPIC_AUTH_METHOD") == "epic_oauth":
+                try:
+                    existing_session = False
+                    try:
+                        await page.goto("https://store.epicgames.com/en-US/free-games", wait_until="domcontentloaded", timeout=30000)
+                        existing_session = await page.locator("egs-navigation").get_attribute("isloggedin", timeout=5000) == "true"
+                    except Exception as exc:
+                        if _is_driver_disconnect_error(exc):
+                            raise RuntimeError("target page, context or browser has been closed") from None
+                    if not existing_session:
+                        session = json.loads(settings.EPIC_PASSWORD.get_secret_value())
+                        async with httpx.AsyncClient(proxy=http_proxy, timeout=30, trust_env=False) as client:
+                            await bootstrap_browser(
+                                page, session, client,
+                                os.getenv("DB_PATH", "/app/data/kiosk.db"), os.environ["EPIC_RUN_ID"],
+                                CredentialCipher.from_environment(),
+                            )
+                    else:
+                        logger.info("Epic 已登录，复用当前账号浏览器会话")
+                    logger.info("Epic 官方登录跳转完成，正在验证浏览器会话")
+                except NativeAuthError as exc:
+                    logger.error(f"Epic 官方登录失败 stage={exc.stage}: {exc}")
+                    logger.error(f"❌ ERROR_TYPE:{exc.error_type}")
+                    return ErrorType(exc.error_type)
+                except (ValueError, KeyError):
+                    logger.error("Epic 官方登录凭据格式无效")
+                    logger.error("❌ ERROR_TYPE:native_auth_expired")
+                    return ErrorType.NATIVE_AUTH_EXPIRED
 
             # Handle Epic Games authentication
             logger.debug("Initiating Epic Games authentication")

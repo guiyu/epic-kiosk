@@ -65,6 +65,7 @@ class GameCollectResult(Enum):
     PROVIDER_TIMEOUT = "provider_timeout"
 
     CAPTCHA_UNSOLVED = "captcha_unsolved"
+    CAPTCHA_MANUAL_REQUIRED = "captcha_manual_required"
 
     # 失败：验证码通过，但无法确认订单完成或商品入库
     CHECKOUT_FAILED = "checkout_failed"
@@ -668,6 +669,8 @@ class EpicAgent:
                     return GameCollectResult.DRIVER_CRASH
                 if "provider_timeout" in error_message:
                     return GameCollectResult.PROVIDER_TIMEOUT
+                if "manual_required" in error_message:
+                    return GameCollectResult.CAPTCHA_MANUAL_REQUIRED
                 if "captcha_unsolved" in error_message:
                     return GameCollectResult.CAPTCHA_UNSOLVED
                 if _is_captcha_error(e):
@@ -1661,6 +1664,8 @@ class EpicGames:
                 return True
 
             if await self._has_visible_hcaptcha_challenge(page):
+                if os.getenv("EPIC_CAPTCHA_MODE") == "manual":
+                    raise RuntimeError("captcha manual_required: 请在 Epic 官方页面亲自完成人机验证")
                 try:
                     logger.info("检测到可见 hCaptcha 挑战，启动验证码识别")
                     if agent._captcha_payload_queue.empty():
@@ -1944,6 +1949,8 @@ class EpicGames:
             except Exception as err:
                 if isinstance(err, PageNavigationTimeout):
                     raise
+                if "manual_required" in str(err):
+                    raise
                 if _is_driver_disconnect_error(err):
                     raise RuntimeError(f"driver checkout failed: {err}") from err
                 # CTA 已经派发但结账 surface 没出现时，最后做一次受控的
@@ -2020,11 +2027,17 @@ class EpicGames:
                 await self._uk_confirm_order(wpc)
                 if await payment_btn.is_visible():
                     await payment_btn.click(force=True)
-                await agent.wait_for_challenge()
+                if os.getenv("EPIC_CAPTCHA_MODE") == "manual":
+                    if await self._has_visible_hcaptcha_challenge(self.page):
+                        raise RuntimeError("captcha manual_required: 请在 Epic 官方页面亲自完成人机验证")
+                else:
+                    await agent.wait_for_challenge()
                 await self.page.wait_for_url(f"{URL_CART_SUCCESS}**", timeout=30000)
                 return True
             except Exception as err:
                 last_error = err
+                if "manual_required" in str(err):
+                    raise
                 if _is_driver_disconnect_error(err):
                     raise RuntimeError(f"driver cart checkout failed: {err}") from err
                 if self.page.url.startswith(URL_CART_SUCCESS):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
@@ -49,6 +50,9 @@ class HCaptchaChallengerSolver:
         self.agent = agent
 
     async def solve(self) -> CaptchaSolveResult:
+        if os.getenv("EPIC_CAPTCHA_MODE") == "manual":
+            return CaptchaSolveResult(CaptchaSolveStatus.MANUAL_REQUIRED,
+                                      message="请在 Epic 官方页面亲自完成人机验证")
         try:
             signal = await self.agent.wait_for_challenge()
         except TimeoutError as exc:
@@ -102,6 +106,9 @@ class TwoCaptchaTokenSolver:
         self.session = session or requests.Session()
 
     async def solve(self) -> CaptchaSolveResult:
+        if os.getenv("EPIC_CAPTCHA_MODE") == "manual":
+            return CaptchaSolveResult(CaptchaSolveStatus.MANUAL_REQUIRED,
+                                      message="请在 Epic 官方页面亲自完成人机验证")
         if not self.api_key:
             return CaptchaSolveResult(
                 CaptchaSolveStatus.DISABLED,

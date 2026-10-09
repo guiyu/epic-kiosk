@@ -7,7 +7,9 @@
 ![Docker](https://img.shields.io/badge/Docker-Compose-blue?logo=docker)
 ![Python](https://img.shields.io/badge/Python-3.12-yellow?logo=python)
 
-Epic Kiosk 是一个基于 Docker 的 Epic Games 每周免费游戏自动领取服务，支持多账号托管、验证码自动处理、队列调度和多 WARP 出口。
+Epic Kiosk 是一个基于 Docker 的 Epic Games 每周免费游戏自动领取服务，支持 Epic 官方授权登录、二次验证、真实库存查询、队列调度和多 WARP 出口。
+
+本分支基于 [10000ge10000/epic-kiosk](https://github.com/10000ge10000/epic-kiosk)，增加了类似 Heroic/Legendary 的官方授权码登录流程。
 
 > 公益站点：[https://epic.910501.xyz/](https://epic.910501.xyz/)
 
@@ -17,8 +19,10 @@ Epic Kiosk 是一个基于 Docker 的 Epic Games 每周免费游戏自动领取�
 
 ## 特性
 
-- **多账号托管**：在 Web 控制台提交 Epic 邮箱和密码，后续由 Worker 自动处理登录与领取。
-- **高可用验证码处理**：支持以 **Google Gemini 3.5 Flash Lite** 作为主力模型（毫秒级响应，平均 1.1s~1.5s），并由 **SiliconFlow**（GLM-4.5V / Kimi）提供自动熔断降级兜底，兼具极速破解与断网容灾能力。
+- **官方登录与二次验证**：在 Epic 官方页面输入密码和验证器验证码，再将一次性 `authorizationCode` 粘贴到本地控制台；无需关闭两步验证。
+- **统一账号与真实库存**：控制台和资产页使用同一个授权账号；官方授权成功后即可读取 Epic 库存，网页会话验证结果单独显示。
+- **会话复用**：领取任务复用账号的浏览器 profile；需要时刷新 OAuth 凭据并建立网页会话。临时网页错误不会删除已保存的授权。
+- **人工验证模式**：设置 `EPIC_CAPTCHA_MODE=manual` 后，遇到人机验证停止自动处理并提示用户到 Epic 官方页面亲自完成；普通 AI 接口不参与验证挑战。
 - **多游戏流程**：只有本周期全部周免均确认 `claimed/owned` 才会标记账号完成，失败项会延迟补跑。
 - **周期调度**：Web 每小时检查当前周免集合；新周期按 5 个账号一批、每批间隔 10 分钟；周期内新增账号会自动补排，同周期已完成账号不会重复领取。
 - **登录与领取分离**：托管账号时只验证登录并保存账号，实际领取由后续周免周期任务执行。
@@ -29,10 +33,10 @@ Epic Kiosk 是一个基于 Docker 的 Epic Games 每周免费游戏自动领取�
 
 ### 手动部署（推荐）
 
-默认推荐 **Google Gemini 3.5 Flash Lite**（极速）搭配 **SiliconFlow** 降级兜底，也兼容 NVIDIA 和其他 OpenAI-compatible API 提供商。
+推荐使用官方授权登录和人工验证模式。普通模型调用可选用 OpenAI-compatible API，与 Epic 登录和二次验证分开配置。
 
 ```bash
-git clone https://github.com/10000ge10000/epic-kiosk.git
+git clone https://github.com/guiyu/epic-kiosk.git
 cd epic-kiosk
 cp .env.example .env
 nano .env
@@ -44,8 +48,8 @@ nano .env
 sudo install -d -m 0700 -o 1002 -g 1002 /etc/epic-kiosk/secrets
 sudo install -m 0600 -o 1002 -g 1002 /dev/null /etc/epic-kiosk/secrets/captcha_gemini_api_key
 sudo install -m 0600 -o 1002 -g 1002 /dev/null /etc/epic-kiosk/secrets/captcha_siliconflow_api_key
-sudo nano /etc/epic-kiosk/secrets/captcha_gemini_api_key
-sudo nano /etc/epic-kiosk/secrets/captcha_siliconflow_api_key
+sudo install -m 0600 -o 1002 -g 1002 /dev/null /etc/epic-kiosk/secrets/captcha_nvidia_api_key
+# 人工验证模式下，以上兼容旧配置的文件可保持为空。
 ```
 
 生成内部接口令牌和 Fernet 凭据密钥：
@@ -55,6 +59,15 @@ openssl rand -hex 32 | sudo tee /etc/epic-kiosk/secrets/internal_api_token >/dev
 openssl rand -base64 32 | tr '+/' '-_' | tr -d '\n' | sudo tee /etc/epic-kiosk/secrets/epic_credential_keys >/dev/null
 sudo chown 1002:1002 /etc/epic-kiosk/secrets/*
 sudo chmod 0600 /etc/epic-kiosk/secrets/*
+```
+
+创建 `docker-compose.override.yml`，让人工验证模式传入 Worker（仅在 `.env` 设置该变量不会自动传入容器）：
+
+```yaml
+services:
+  worker:
+    environment:
+      EPIC_CAPTCHA_MODE: manual
 ```
 
 启动服务：
@@ -80,53 +93,40 @@ chmod +x install.sh
 
 ## 配置说明
 
-### API Provider
+### 普通 AI 接口（可选）
 
-项目通过 OpenAI-compatible `/v1/chat/completions` 接口调用模型。支持在多个提供商之间按优先级自动故障转移与熔断。
+普通模型调用支持 OpenAI-compatible `/v1/chat/completions`。供应商返回的模型列表不一定代表模型可用，应使用普通文本请求验证实际调用。此配置不用于自动完成人机验证。
 
-| Provider | API_BASE_URL | 说明 |
-| --- | --- | --- |
-| `google` | `https://generativelanguage.googleapis.com/v1beta/openai/v1` | **推荐主力**。Gemini 3.5 Flash Lite 极速响应（~1.2s），抗超时风控。 |
-| `siliconflow` | `https://api.siliconflow.cn/v1` | **推荐备用/兜底**。GLM-4.5V / Kimi 多模型链，用于 Google 频控时自动无感切入。 |
-| `nvidia` | `https://integrate.api.nvidia.com/v1` | 兼容旧版部署配置。 |
-| `custom` | 自定义 `/v1` 地址 | 适合自建 OpenAI-compatible 网关。 |
-
-推荐的双保险环境变量配置（示例）：
+将 API Key 保存在仓库外的 `0600` Secret 文件中，在 `.env` 中只填写文件路径、接口地址和模型名：
 
 ```env
-INTERNAL_API_TOKEN_PATH=/etc/epic-kiosk/secrets/internal_api_token
-EPIC_CREDENTIAL_KEYS_PATH=/etc/epic-kiosk/secrets/epic_credential_keys
-CAPTCHA_GEMINI_API_KEY_PATH=/etc/epic-kiosk/secrets/captcha_gemini_api_key
-CAPTCHA_SILICONFLOW_API_KEY_PATH=/etc/epic-kiosk/secrets/captcha_siliconflow_api_key
-
-# 主力模型：Google Gemini 3.5 Flash Lite
-API_PROVIDER=google
-API_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/v1
-PRIMARY_MODEL=gemini-3.5-flash-lite
-CAPTCHA_PRIMARY_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/v1
-CAPTCHA_PRIMARY_MODEL=gemini-3.5-flash-lite
-CAPTCHA_PRIMARY_API_KEY_FILE=/run/secrets/captcha_gemini_api_key
-
-# 备用降级链：SiliconFlow 兜底
-CAPTCHA_SECONDARY_BASE_URL=https://api.siliconflow.cn/v1
-CAPTCHA_SECONDARY_MODEL=zai-org/GLM-4.5V
-CAPTCHA_TERTIARY_BASE_URL=https://api.siliconflow.cn/v1
-CAPTCHA_TERTIARY_MODEL=moonshotai/Kimi-K2.7-Code
-CAPTCHA_TOTAL_API_BUDGET=150
-CAPTCHA_PROVIDER=none
+ORDINARY_AI_API_KEY_PATH=/etc/epic-kiosk/secrets/ordinary_ai_api_key
+API_BASE_URL=https://your-provider.example/v1
+PRIMARY_MODEL=your-model-id
 ```
 
-`INTERNAL_API_TOKEN` 只用于 `web` 与 `worker` 的内部接口认证，必须是独立随机值，不能与模型 API Key 共用。Secret 文件应保持 `0600`，不要把真实内容写入 `.env`。
+如需启用，将上面的 `docker-compose.override.yml` 改为：
 
-模型按以下顺序故障转移：
-
-```text
-Google (gemini-3.5-flash-lite)
-  -> SiliconFlow (zai-org/GLM-4.5V)
-  -> SiliconFlow (moonshotai/Kimi-K2.7-Code)
+```yaml
+services:
+  worker:
+    environment:
+      EPIC_CAPTCHA_MODE: manual
+      API_PROVIDER: custom
+      API_BASE_URL: ${API_BASE_URL}
+      API_KEY_FILE: /run/secrets/ordinary_ai_api_key
+      PRIMARY_MODEL: ${PRIMARY_MODEL}
+      PRIMARY_MODEL_FALLBACK: ${PRIMARY_MODEL}
+    secrets:
+      - ordinary_ai_api_key
+secrets:
+  ordinary_ai_api_key:
+    file: ${ORDINARY_AI_API_KEY_PATH:?set ORDINARY_AI_API_KEY_PATH}
 ```
 
-API Key 统一通过 Docker Secrets 机制安全注入容器内部 `/run/secrets/`，杜绝密钥泄露风险。
+`INTERNAL_API_TOKEN` 只用于 `web` 与 `worker` 的内部接口认证，必须是独立随机值，不能与模型 API Key 共用。Secret 文件保持 `0600`，不要把真实内容写入 `.env`。
+
+仓库保留旧版模型与验证服务配置以兼容已有部署；推荐部署应明确设置人工验证模式。旧版模型配置说明见 [模型配置](docs/MODEL_CONFIG.md)。
 
 ### WARP 出口
 
@@ -153,7 +153,7 @@ WARP 控制接口请求会显式绕过 `HTTP_PROXY` / `HTTPS_PROXY`，避免 Wor
 ### 任务恢复
 
 - 供应商失败：默认延迟 15/60 分钟重试；连续 3 次失败后熔断 10 分钟。
-- 验证码未解：默认 2 小时后补跑一次。
+- 人工验证模式：遇到挑战会提示用户亲自在 Epic 官方页面验证或领取，再回到资产页刷新；不调用模型或外部验证服务。
 - 网络超时：默认延迟 10 分钟重试，最多 2 次。
 - Cookie 失效：清理该账号浏览器 profile 后立即重试，默认 1 次。
 - 多游戏领取：成功游戏先入库，失败游戏进入一次延迟补跑。
@@ -169,13 +169,17 @@ WARP 控制接口请求会显式绕过 `HTTP_PROXY` / `HTTPS_PROXY`，避免 Wor
 
 ## 使用方法
 
-1. 打开 Web 控制台。
-2. 输入 Epic 邮箱和密码。
-3. 点击「启动引擎」。
-4. 系统只验证登录、处理验证码，并把账号加入后续周免周期调度。
-5. 在「资产」和「本周免费」页面查看领取记录和当前免费游戏。
+1. 打开 Web 控制台，选择「Epic 官方登录（推荐）」。
+2. 点击「打开 Epic 官方登录」，在 Epic 页面输入账号、密码和二次验证码。
+3. 复制登录后返回的 `authorizationCode` 或完整 JSON，粘贴到本地页面并连接账号。这里不填写验证器的 6 位验证码。
+4. 官方授权成功后，本地加密保存可刷新凭据并自动加载资产页；浏览器登录验证在后台继续，两者分别显示结果。
+5. 在「资产」查看 Epic 真实库存，点击「领取本周免费游戏」可复用当前账号；后续周免任务由周期调度自动安排。
 
-删除托管账号时需要重新输入密码确认。删除后会清除数据库记录和对应浏览器 profile。
+授权码为一次性短期凭据，请勿发到聊天、日志或 Issue。过期后重新打开官方登录页面获取；不要提交其他来源不明的 Token 或账号 ID。
+
+资产页展示的是 Epic 账号库存，不限于本工具领取的记录。旧密码账号仍可托管并接受周期调度；查询真实库存和资产页手动领取需要先完成官方授权。大型库存首次加载可能需要几十秒；名称和封面通过有限并发请求补全，无商品信息时使用应用名称。切换账号需要重新进行官方授权。
+
+官方登录模式的删除按钮使用当前本地账号会话确认；旧邮箱密码模式仍需密码确认。删除会清除托管数据库记录和对应浏览器 profile，不会删除 Epic 平台上的账号或游戏。
 
 ## 目录结构
 
@@ -195,7 +199,9 @@ epic-kiosk/
 ## 安全说明
 
 - Epic 凭据使用 Fernet/MultiFernet 加密后保存在 `data/kiosk.db`；数据库、密钥文件和浏览器 profile 必须一起按敏感数据管理。
-- Redis/APScheduler 任务只传递 `run_id`，不传递邮箱或密码。
+- Redis/APScheduler 任务只传递 `run_id`，不传递邮箱、密码或 Epic Token。
+- 官方登录的密码和二次验证码只在 Epic 页面填写；OAuth 凭据在服务端加密保存，刷新操作按账号加锁，避免 Web 与 Worker 同时轮换。
+- 浏览器本地存储保存的是本工具的账号访问令牌，用于库存查询和领取操作；它也应视为敏感凭据。不要共享浏览器配置或在不受信任的设备上托管账号。
 - `.env` 不应提交到 Git；真实 API Key、内部令牌和凭据密钥只放在仓库外 Secret 文件中。
 - 日志、截图、Issue、PR 中不要公开 API Key、Cookie、Token、Epic 密码或完整生产配置。
 - 对外开放 Web 控制台前，应额外配置反向代理访问控制、面板鉴权或防火墙白名单。
@@ -238,7 +244,9 @@ tail -50 data/logs/runtime-$(date +%Y-%m-%d).log
 - `未配置 API Key`：检查四个 Secret 路径存在、文件权限为 `0600`，并确认模型 Key 文件不是空文件。
 - API 返回 `401` / `403`：Key 无效、额度不可用或 Provider 权限不足。
 - API 返回 `404`：模型 ID 不存在，或当前账号无权调用该模型。
-- 验证码一直失败：先看 Worker 日志中的模型名、API 错误码和 WARP 重启记录，再判断是模型能力、Provider 权限还是 Epic 风控。
+- 二次验证：使用官方登录，在 Epic 页面输入验证码；无需关闭两步验证。
+- 官方授权成功但网页失败：库存可以独立加载，授权会保留；查看任务日志的失败阶段和 HTTP 状态，稍后重试。只有明确的凭据失效才需重新授权。
+- 人机验证提示：到 Epic 官方商店亲自完成验证或领取，再刷新资产页。普通 AI 接口可用不代表人机验证会自动完成。
 - `Requires Base Game`：该免费项是 DLC，需要先拥有基础游戏，系统会跳过或记录失败原因。
 - WARP 控制接口短暂 `503`：Worker 调用控制接口时会绕过环境代理，并按 `WARP_CONTROL_RESTART_RETRIES` 和 `WARP_CONTROL_RESTART_BACKOFF_SECONDS` 退避重试，同时检查 `/health` 与代理端口连通性，避免连续重启整个 `epic-warp` 容器。
 - 爬虫访问 `robots.txt`、`sitemap.xml`、`llms.txt`、`security.txt`：这些公开元文件会返回 200；明显错误的 CSS `url(...)` 路径会返回 204，以减少无意义 404 日志。

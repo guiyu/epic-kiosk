@@ -990,7 +990,7 @@ ERROR_TYPE_MESSAGES = {
     # 验证码需要人工处理
     "captcha_manual_required": {
         "status": "⚠️ 需要人工完成验证码",
-        "hint": "Epic 触发了 hCaptcha 动物拖拽题，系统已停止自动重试以避免账号风控，请联系管理员人工完成一次登录",
+        "hint": "请打开 Epic 官方商店亲自完成验证或领取，然后回到资产页刷新库存；不会调用模型或打码服务完成挑战",
         "nuke": False,
     },
     # 验证码已通过，但 Epic 结账结果无法可靠确认
@@ -1028,9 +1028,23 @@ ERROR_TYPE_MESSAGES = {
         "nuke": False,
     },
     # 账号开启了两步验证
+    "native_auth_expired": {
+        "status": "需要重新进行 Epic 官方登录",
+        "hint": "登录授权或网页会话已失效，请在控制台点击 Epic 官方登录重新授权",
+    },
+    "native_auth_failed": {
+        "status": "Epic 授权服务请求失败",
+        "hint": "Epic 授权服务暂未完成请求，请稍后重试；这不代表授权码过期",
+        "nuke": False,
+    },
+    "native_web_session_failed": {
+        "status": "Epic 网页登录会话未建立",
+        "hint": "授权已兑换，但 Epic 网页登录或跳转未完成。请稍后重新连接，若持续失败请查看任务日志中的失败阶段",
+        "nuke": False,
+    },
     "two_factor_required": {
         "status": "❌ 该账号开启了两步验证",
-        "hint": "自动化无法完成邮箱验证码环节。请在 Epic 账户设置 → 密码与安全中关闭两步验证后重新托管",
+        "hint": "请切换到控制台的 Epic 官方登录，在 Epic 页面输入二次验证码后粘贴授权码",
         # 不设 nuke：两步验证是用户可以自行关闭的，不该因此删掉账号。
         # 该类型也不在任何重试策略集合里，所以会直接终止，不会每个周期都撞一次。
         "nuke": False,
@@ -1373,6 +1387,8 @@ def run_task(task_data):
     env["EPIC_EMAIL"] = email
     env["EPIC_PASSWORD"] = password
     env["EPIC_PROFILE_ID"] = profile_id
+    env["EPIC_AUTH_METHOD"] = task_data.get("auth_method", "password")
+    env["EPIC_RUN_ID"] = run_id
     if mode == "verify":
         env["EPIC_VERIFY_ONLY"] = "1"
     target_games = task_data.get("retry_data", {}).get("target_games")
@@ -1875,6 +1891,7 @@ def main_loop():
                     "email": context.email,
                     "password": context.password,
                     "profile_id": context.profile_id,
+                    "auth_method": context.auth_method,
                     "mode": context.mode,
                     "attempt": context.attempt,
                     "retry_data": context.retry_data,

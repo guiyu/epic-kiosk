@@ -50,7 +50,11 @@ ehthumbs.db
 logs/
 
 # 测试和覆盖率
-tests/
+tests/*
+!tests/test_native_auth.py
+!tests/test_native_api.py
+!tests/test_native_ui.js
+!tests/manual_captcha_check.py
 .coverage
 htmlcov/
 .pytest_cache/
@@ -78,3 +82,5 @@ data/*.db-shm
 !.env.example
 .claude/
 data/*.py
+
+data/oauth_locks/

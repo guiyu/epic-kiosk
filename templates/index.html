@@ -145,6 +145,11 @@
         .design-v4 .mission-footer { margin-top:48px; } .design-v4 .mission-footer-inner { gap:48px; padding:34px 52px 24px; } .design-v4 .footer-brand-block h2 { font-size:clamp(24px, 2.6vw, 32px); } .design-v4 .footer-nav-links { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; } .design-v4 .footer-nav-link { min-height:46px; padding:0 12px; } .design-v4 .footer-bottom { min-height:50px; }
         @media (max-width:720px) { .design-v4 .mission-footer { margin-top:40px; } .design-v4 .mission-footer-inner { gap:26px; padding:28px 22px 22px; } .design-v4 .footer-nav-links { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; } .design-v4 .footer-nav-link { grid-template-columns:26px minmax(0, 1fr); gap:8px; min-height:64px; padding:0 10px; } .design-v4 .footer-link-icon { width:26px; height:26px; border-radius:7px; } .design-v4 .footer-link-label { font-size:13px; line-height:1.25; } .design-v4 .footer-link-meta, .design-v4 .footer-nav-link > svg { display:none; } .design-v4 .footer-bottom { padding:16px 22px 18px; } }
         .design-v4 .footer-nav-link { grid-template-columns:28px minmax(0, 1fr) auto 14px; gap:8px; padding:0 10px; } .design-v4 .footer-link-label { white-space:nowrap; } .design-v4 .footer-nav-link > svg { width:14px; height:14px; }
+            .login-methods { display:flex; flex-wrap:wrap; gap:8px; margin:18px 0; }
+        .login-methods button[aria-pressed="true"] { color:white; background:#1359E8; }
+        .native-steps { margin:16px 0; padding-left:22px; color:#496C8D; line-height:1.8; }
+        .native-status { margin:12px 0; color:#215082; line-height:1.6; }
+        #epic-code { font-family:monospace; }
     </style>
 </head>
 <body>
@@ -181,13 +186,27 @@
         <main id="main-content">
             <section id="view-deposit" class="tab-content" role="tabpanel" aria-labelledby="tab-deposit">
                 <div class="view-lead">
-                    <div><p class="eyebrow">Mission / account automation</p><h2>每周的游戏，<br>自动进入你的收藏架。</h2><p>提交账号后，系统建立领取任务并持续展示可验证的运行过程。这里不是普通表单，而是你的游戏托管起点。</p></div>
+                    <div><p class="eyebrow">Mission / account automation</p><h2>每周的游戏，<br>自动进入你的收藏架。</h2><p>通过 Epic 官方页面完成登录和二次验证，账号托管后自动检查每周免费游戏。</p></div>
                     <div class="lead-note"><strong>OPERATING NOTE</strong>账号、任务和日志始终留在同一条操作路径上；遇到人工验证会明确停止并给出下一步。</div>
                 </div>
                 <div id="work-area-container" class="mission-stage">
-                    <form id="deposit-form" class="passport" novalidate onsubmit="startVerify(); return false;">
-                        <div class="passport-top"><div><p class="passport-kicker">ACCOUNT PASS / 01</p><h3>签发托管通行证</h3><p class="passport-copy">验证完成后，账号将进入每周免费游戏的自动领取流程。</p></div><span class="passport-stamp"><span class="state-dot" aria-hidden="true"></span>安全操作</span></div>
-                        <aside class="security-note" aria-label="账号安全说明"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"></path></svg><div><h4>提交前请确认</h4><ul><li>建议使用专门领取周免的 Epic 账号；关闭两步验证会降低账号安全性。</li><li>不要在公共设备上勾选记住邮箱。<a href="https://www.epicgames.com/id/register" target="_blank" rel="noopener noreferrer">注册 Epic 账号</a> · <a href="https://www.epicgames.com/account/password" target="_blank" rel="noopener noreferrer">账号设置</a></li><li>停止托管会删除本地账号记录和浏览器登录态，不会删除 Epic 账号。</li></ul></div></aside>
+                    <div class="passport">
+                        <div class="passport-top"><div><p class="passport-kicker">EPIC ACCOUNT / LOGIN</p><h3>连接 Epic 账号</h3><p class="passport-copy">在 Epic 官方页面完成登录和二次验证，授权后开启自动领取。</p></div><span class="passport-stamp">支持两步验证</span></div>
+                        <div class="login-methods" aria-label="登录方式">
+                            <button id="method-native" type="button" class="btn btn-secondary" aria-pressed="true" onclick="selectLoginMethod('native')">Epic 官方登录（推荐）</button>
+                            <button id="method-password" type="button" class="btn btn-secondary" aria-pressed="false" onclick="selectLoginMethod('password')">邮箱密码登录</button>
+                        </div>
+                        <form id="native-form" novalidate onsubmit="submitEpicLogin(); return false;">
+                            <ol class="native-steps"><li>打开 Epic 官方登录页面。</li><li>在 Epic 页面输入密码和验证器的 6 位验证码。</li><li>复制登录后显示的 <strong>authorizationCode</strong>，或整段 JSON，粘贴到下面。</li></ol>
+                            <div class="button-row"><button id="btn-epic-open" type="button" class="btn btn-primary" onclick="beginEpicLogin()">1. 打开 Epic 官方登录</button><a id="epic-login-link" class="btn btn-secondary hidden" target="_blank" rel="noopener noreferrer">重新打开登录页面</a></div>
+                            <p class="field-hint">密码和二次验证码只在 Epic 页面填写。这里接收一次性授权码，不需要关闭两步验证。</p>
+                            <div class="field-group" style="margin-top:18px"><label class="field-label" for="epic-code">Epic 一次性授权码</label><input id="epic-code" class="field-input" type="password" autocomplete="off" spellcheck="false" placeholder="authorizationCode 或完整 JSON"><span class="field-hint">这不是验证器的 6 位验证码。授权码过期时，请重新打开官方登录页面。</span></div>
+                            <div class="button-row"><button id="btn-epic-submit" class="btn btn-primary" type="submit">2. 连接账号并开启托管</button><button id="btn-native-delete" type="button" class="btn btn-secondary hidden" onclick="deleteNativeAccount()">停止托管并删除账号数据</button></div>
+                            <p id="native-login-status" class="native-status" role="status" aria-live="polite">尚未连接 Epic 账号。</p>
+                            <p class="field-hint">本地加密保存登录凭据，授权失效时会提示重新登录。</p>
+                        </form>
+                    <form id="deposit-form" class="hidden" novalidate onsubmit="startVerify(); return false;">
+                        <aside class="security-note" aria-label="账号安全说明"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"></path></svg><div><h4>提交前请确认</h4><ul><li>开启两步验证的账号请使用上方的 Epic 官方登录。</li><li>不要在公共设备上勾选记住邮箱。<a href="https://www.epicgames.com/id/register" target="_blank" rel="noopener noreferrer">注册 Epic 账号</a> · <a href="https://www.epicgames.com/account/password" target="_blank" rel="noopener noreferrer">账号设置</a></li><li>停止托管会删除本地账号记录和浏览器登录态，不会删除 Epic 账号。</li></ul></div></aside>
                         <div class="account-form">
                             <div class="field-group"><label class="field-label" for="d_email">Epic 邮箱</label><input id="d_email" class="field-input" type="email" autocomplete="username" placeholder="name@example.com" required></div>
                             <div class="field-group"><label class="field-label" for="d_password">Epic 密码</label><div class="password-field"><input id="d_password" class="field-input" type="password" autocomplete="current-password" placeholder="仅用于自动登录验证" required><button type="button" class="password-toggle" onclick="togglePwd('d_password', this)" title="显示密码" aria-label="显示密码"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 0c-1.5 4-4.5 6-9 6s-7.5-2-9-6c1.5-4 4.5-6 9-6s7.5 2 9 6Z"></path></svg></button></div><span class="field-hint">仅在提交验证时使用；启动后密码输入框会清空。</span></div>
@@ -195,6 +214,7 @@
                             <div class="button-row"><button id="btn-deposit" class="btn btn-primary" type="submit"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9" d="M8 5v14l11-7z"></path></svg><span>启动引擎</span></button><button id="btn-delete" class="btn btn-secondary" type="button" onclick="deleteAccount()">停止托管并删除账号数据</button></div>
                         </div>
                     </form>
+                    </div>
                     <aside id="status-panel-wrapper" class="task-deck" aria-labelledby="task-panel-title">
                         <p class="task-kicker">MISSION STATUS</p><h3 id="task-panel-title">当前任务</h3><p id="task-summary-text" aria-live="polite">暂无运行中的任务。启动后会在这里显示关键进度。</p>
                         <div class="task-steps" aria-label="任务步骤"><div class="task-step" data-step="1"><span class="task-step-index">1</span><span>签发账号通行证</span></div><div class="task-step" data-step="2"><span class="task-step-index">2</span><span>验证登录与验证码</span></div><div class="task-step" data-step="3"><span class="task-step-index">3</span><span>领取并保存结果</span></div></div>
@@ -205,10 +225,10 @@
             </section>
 
             <section id="view-query" class="tab-content hidden" role="tabpanel" aria-labelledby="tab-query">
-                <div class="view-lead"><div><p class="eyebrow">Collection / game library</p><h2>找回这台自动驾驶<br>为你收下的每一份礼物。</h2><p>输入托管账号凭据，查看系统记录的游戏与领取日期。</p></div><div class="lead-note"><strong>LIBRARY VIEW</strong>封面是主角；领取日期和商店入口被收束为辅助索引。</div></div>
-                <div class="library-shell"><form class="query-dock" novalidate onsubmit="doQuery(); return false;"><div class="field-group"><label class="field-label" for="q_email">Epic 邮箱</label><input id="q_email" class="field-input" type="email" autocomplete="username" placeholder="name@example.com" required></div><div class="field-group"><label class="field-label" for="q_password">Epic 密码</label><input id="q_password" class="field-input" type="password" autocomplete="current-password" placeholder="用于身份确认"></div><button id="btn-query" class="btn btn-primary" type="submit">打开资产库</button></form>
+                <div class="view-lead"><div><p class="eyebrow">Collection / game library</p><h2>找回这台自动驾驶<br>为你收下的每一份礼物。</h2><p>与控制台共用同一个 Epic 官方授权。登录后自动加载真实库存，领取时复用当前账号。</p></div><div class="lead-note"><strong>LIBRARY VIEW</strong>封面是主角；领取日期和商店入口被收束为辅助索引。</div></div>
+                <div class="library-shell"><div class="query-dock"><div><strong id="asset-account-status">尚未连接 Epic 账号</strong><p id="asset-inventory-status" class="field-hint">库存来自 Epic 账号，不只是本工具的领取记录。</p><input id="q_email" type="hidden"></div><button class="btn btn-secondary" type="button" onclick="switchTab('deposit')">连接 / 切换账号</button><button id="btn-query" class="btn btn-primary" type="button" onclick="doQuery()">刷新库存</button><button id="btn-claim" class="btn btn-primary" type="button" onclick="claimCurrentAccount()">领取本周免费游戏</button></div>
                     <div id="skeleton-grid" class="games-grid hidden" aria-label="正在加载资产"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
-                    <div id="query-result-area" class="hidden"><div class="result-header"><h3>已入库游戏</h3><span id="log-count" class="count-badge">0</span></div><div id="games-grid" class="games-grid"></div><div id="empty-msg" class="empty-state hidden"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M3 6.5C5 5.5 7 5 9 6s3 1 3 1 1-1 3-1 4 0 6 1v11c-2-1-4-1.5-6-.5s-3 1-3 1-1-1-3-1-4-.5-6 .5v-11Z"></path></svg><div><h3>暂未记录资产</h3><p>先在控制台完成账号托管，领取记录会显示在这里。</p></div></div></div>
+                    <div id="query-result-area" class="hidden"><div class="result-header"><h3>Epic 账号库存</h3><span id="log-count" class="count-badge">0</span></div><div id="games-grid" class="games-grid"></div><div id="empty-msg" class="empty-state hidden"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M3 6.5C5 5.5 7 5 9 6s3 1 3 1 1-1 3-1 4 0 6 1v11c-2-1-4-1.5-6-.5s-3 1-3 1-1-1-3-1-4-.5-6 .5v-11Z"></path></svg><div><h3>暂未记录资产</h3><p>完成官方登录后，这里会显示 Epic 账号的游戏库存。</p></div></div></div>
                 </div>
             </section>
 
@@ -238,7 +258,7 @@
         </footer>
     </div>
 
-    <div id="success-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="success-modal-title" aria-describedby="success-modal-desc"><div class="modal-card" tabindex="-1"><div class="modal-icon"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 13 4 4L19 7"></path></svg></div><h3 id="success-modal-title">领取成功</h3><p id="success-modal-desc">游戏已确认加入该账号资产。</p><div class="modal-details"><span class="field-hint">本次新增资产</span><strong id="modal-game-name">Unknown Game</strong></div><div class="modal-actions"><a id="modal-game-link" class="btn btn-primary" href="https://store.epicgames.com/" target="_blank" rel="noopener noreferrer">前往 Epic 商店查看</a><button type="button" class="btn btn-secondary" onclick="closeModal()">关闭</button></div></div></div>
+    <div id="success-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="success-modal-title" aria-describedby="success-modal-desc"><div class="modal-card" tabindex="-1"><div class="modal-icon"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m5 13 4 4L19 7"></path></svg></div><h3 id="success-modal-title">账号托管成功</h3><p id="success-modal-desc">Epic 登录验证已完成，账号将加入每周免费游戏的自动领取流程。</p><div class="modal-details"><span class="field-hint">已连接账号</span><strong id="modal-game-name">Unknown Game</strong></div><div class="modal-actions"><a id="modal-game-link" class="btn btn-primary" href="https://store.epicgames.com/" target="_blank" rel="noopener noreferrer">前往 Epic 商店查看</a><button type="button" class="btn btn-secondary" onclick="closeModal()">关闭</button></div></div></div>
     <div id="error-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="error-modal-title" aria-describedby="error-modal-desc"><div class="modal-card" tabindex="-1"><div id="error-modal-icon" class="modal-icon is-warning"></div><h3 id="error-modal-title">需要您帮忙操作一下</h3><div class="modal-details"><p id="error-modal-desc">这个账号需要先完成 Epic 的必要操作。</p><div id="error-modal-steps"><p class="field-label" style="margin-top:14px">请按以下步骤操作：</p><ol><li>打开 <a href="https://www.epicgames.com" target="_blank" rel="noopener noreferrer">Epic 官网</a> 并登录。</li><li>按页面提示完成服务协议、解锁或验证码等操作。</li><li>完成后返回控制台重新提交托管。</li></ol></div></div><div class="modal-actions"><a class="btn btn-primary" href="https://www.epicgames.com" target="_blank" rel="noopener noreferrer">前往 Epic 官网</a><button type="button" class="btn btn-secondary" onclick="closeErrorModal()">我知道了</button></div></div></div>
 
     <script>
@@ -246,6 +266,9 @@
         let pollTimer = null; let pollStartedAt = 0, pollFailures = 0, pollBusy = false;
         let activeTask = null;
         let accountAccessToken = '';
+        let accountAuthMethod = '';
+        let epicLoginState = '';
+        let nativeBusy = false;
         let lastModalFocus = null;
         let activeModal = null;
         let lobbyTimer = null; let lobbyBusy = false; let logUserCleared = false;
@@ -318,10 +341,10 @@
             invalid_credentials: { title:'密码错误', desc:'您输入的邮箱或密码不正确，请检查后重新提交。', steps:false, icon:'x', tone:'danger' },
             account_locked: { title:'账号被锁定', desc:'该 Epic 账号已被锁定，请登录 Epic 官网解锁后再试。', steps:true, icon:'lock', tone:'danger' },
             captcha_failed: { title:'验证码识别困难', desc:'系统暂时无法稳定通过验证码，已停止本次操作，稍后可以重新尝试。', steps:false, icon:'warning', tone:'warning' },
-            captcha_manual_required: { title:'需要人工完成验证码', desc:'Epic 触发了需要人工处理的验证码。系统已停止自动重试，避免继续触发风控；请联系管理员完成一次登录后再试。', steps:true, icon:'warning', tone:'warning' },
+            captcha_manual_required: { title:'请在 Epic 官方页面完成验证', desc:'请打开 Epic 官方商店，亲自完成验证或领取，再回到资产页刷新库存。', steps:false, icon:'warning', tone:'warning' },
             captcha_invalid: { title:'验证码被 Epic 拒绝', desc:'Epic 判定本次验证码无效，这与您的账号和密码无关。系统会在约 2 分钟后自动重试一次，请不要重复提交。', steps:false, icon:'warning', tone:'warning' },
             login_page_timeout: { title:'登录页面未能正常加载', desc:'Epic 登录页的验证码门禁挡住了提交按钮，这与您的账号和密码无关。系统会在约 3 分钟后自动重试一次，请不要重复提交。', steps:false, icon:'clock', tone:'warning' },
-            two_factor_required: { title:'该账号开启了两步验证', desc:'自动化无法完成邮箱验证码环节。请在 Epic 账户设置 → 密码与安全中关闭两步验证后重新托管。', steps:true, icon:'lock', tone:'danger' },
+            two_factor_required: { title:'请使用 Epic 官方登录', desc:'在控制台选择 Epic 官方登录，在 Epic 页面完成二次验证后粘贴授权码。', steps:true, icon:'lock', tone:'danger' },
             provider_timeout: { title:'验证码服务暂时不可用', desc:'验证码识别服务暂时不可用，系统会自动切换并延迟重试，无需重复提交。', steps:false, icon:'clock', tone:'warning' },
             captcha_unsolved: { title:'验证码未能自动完成', desc:'系统未能自动完成验证码，会低频补跑一次；若仍失败需要人工处理。', steps:false, icon:'warning', tone:'warning' },
             page_timeout: { title:'页面导航超时', desc:'Epic 页面响应缓慢，本次任务已停止重复操作，系统将在稍后低频重试。', steps:false, icon:'clock', tone:'warning' },
@@ -335,10 +358,13 @@
             cookie_invalid: { title:'登录已过期', desc:'您的登录状态已过期，请重新托管账号。', steps:false, icon:'key', tone:'warning' },
             unknown: { title:'未知错误', desc:'系统遇到了未知错误，请联系管理员查看日志。', steps:false, icon:'warning', tone:'warning' }
         };
+        ERROR_CONFIGS.native_auth_expired = { title:'需要重新授权', desc:'Epic 登录凭据已失效，请重新点击 Epic 官方登录。', steps:false, icon:'key', tone:'warning' };
+        ERROR_CONFIGS.native_auth_failed = { title:'授权服务请求失败', desc:'Epic 授权服务暂未完成请求，请稍后重试。', steps:false, icon:'warning', tone:'warning' };
+        ERROR_CONFIGS.native_web_session_failed = { title:'网页登录会话未建立', desc:'授权已兑换，但 Epic 网页登录或跳转未完成，请查看任务日志中的失败阶段。', steps:false, icon:'warning', tone:'warning' };
         const ICONS = { info:'<circle cx="12" cy="12" r="9"></circle><path d="M12 10v5m0-8h.01"></path>', x:'<circle cx="12" cy="12" r="9"></circle><path d="m9 9 6 6m0-6-6 6"></path>', lock:'<rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path>', warning:'<path d="M12 3 2.8 19a1.5 1.5 0 0 0 1.3 2h15.8a1.5 1.5 0 0 0 1.3-2L12 3Z"></path><path d="M12 9v4m0 3h.01"></path>', clock:'<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>', key:'<circle cx="8" cy="15" r="3"></circle><path d="m10.5 12.5 7-7m-2 0 2 2m-5 1 2 2"></path>' };
 
         document.addEventListener('DOMContentLoaded', () => {
-            loadRememberedEmail(); fetchSystemStats(); window.setInterval(fetchSystemStats, 30000);
+            loadRememberedEmail(); restoreNativeSession(); restoreNativeTask(); if(accountAccessToken) doQuery(); fetchSystemStats(); window.setInterval(fetchSystemStats, 30000);
             fetchLobbyLogs();
             document.addEventListener('visibilitychange', () => {
                 if (!document.hidden && currentTabName === 'deposit' && !activeTask) {
@@ -382,6 +408,86 @@
         axios.interceptors.response.use(response => response, error => { if (error.response?.status === 403) showToast(error.response.data.msg || 'IP 已被封禁','error'); return Promise.reject(error); });
         function togglePwd(id, button) { const input=document.getElementById(id); const reveal=input.type==='password'; input.type=reveal?'text':'password'; button.title=reveal?'隐藏密码':'显示密码'; button.setAttribute('aria-label',button.title); }
         function updateTaskSteps(message, result='') { const text=String(message || '').toLowerCase(); let current=1; if (/(验证|登录|验证码|captcha|browser)/.test(text)) current=2; if (/(领取|保存|入库|claim|succeed)/.test(text)) current=3; document.querySelectorAll('.task-step').forEach(step => { const index=Number(step.dataset.step); step.classList.toggle('is-active',index===current && !['failed','manual_required'].includes(result)); step.classList.toggle('is-complete',index<current || (result==='succeeded' && index<=current)); }); }
+        function selectLoginMethod(method) {
+            if (activeTask || nativeBusy) return;
+            document.getElementById('native-form').classList.toggle('hidden',method!=='native');
+            document.getElementById('deposit-form').classList.toggle('hidden',method!=='password');
+            document.getElementById('method-native').setAttribute('aria-pressed',String(method==='native'));
+            document.getElementById('method-password').setAttribute('aria-pressed',String(method==='password'));
+        }
+        function setNativeBusy(busy) {
+            nativeBusy=busy;
+            document.querySelectorAll('#native-form input,#native-form button,.login-methods button').forEach(el=>el.disabled=busy);
+            document.getElementById('btn-epic-submit').textContent=busy?'正在验证登录…':'2. 连接账号并开启托管';
+        }
+        async function beginEpicLogin() {
+            const popup=window.open('about:blank','_blank');
+            try {
+                const res=await axios.post('/api/epic/login/start',{});
+                epicLoginState=res.data.login_state;
+                const link=document.getElementById('epic-login-link'); link.href=res.data.login_url; link.classList.remove('hidden');
+                if (popup) { popup.opener=null; popup.location.href=res.data.login_url; }
+                document.getElementById('native-login-status').textContent='请在 Epic 页面完成登录和二次验证，然后回到这里粘贴授权码。';
+                document.getElementById('epic-code').focus();
+            } catch(error) {
+                popup?.close(); showToast(error.response?.data?.detail || error.response?.data?.msg || '无法打开登录流程，请稍后重试','error');
+            }
+        }
+        async function submitEpicLogin() {
+            const input=document.getElementById('epic-code'); const code=input.value.trim();
+            if (!epicLoginState) { showToast('请先点击打开 Epic 官方登录','warning'); return; }
+            if (!code || /^\d{6}$/.test(code)) { showToast('这里需要 authorizationCode，6 位验证码请在 Epic 页面填写','warning'); return; }
+            setNativeBusy(true); input.value='';
+            try {
+                const res=await axios.post('/api/epic/login',{authorization_code:code,login_state:epicLoginState});
+                epicLoginState='';
+                if (res.data.status!=='queued') { showToast(res.data.msg,'warning'); setNativeBusy(false); return; }
+                activeTask={id:res.data.task_id,token:res.data.access_token,email:res.data.email,method:'epic_oauth',mode:'verify'};
+                accountAccessToken=res.data.account_access_token;
+                localStorage.setItem('epic_account_session',JSON.stringify({email:res.data.email,token:accountAccessToken,web_status:'pending'}));
+                restoreNativeSession(); switchTab('query'); doQuery();
+                sessionStorage.setItem('epic_pending_task',JSON.stringify(activeTask));
+                document.getElementById('d_email').value=res.data.email; document.getElementById('q_email').value=res.data.email;
+                document.getElementById('native-login-status').textContent=res.data.msg;
+                startNativeTaskPolling();
+            } catch(error) {
+                epicLoginState=''; setNativeBusy(false);
+                const detail=error.response?.data?.detail;
+                const message=typeof detail==='string'?detail:error.response?.data?.msg || '授权码无效，请重新打开 Epic 官方登录';
+                document.getElementById('native-login-status').textContent=message; showToast(message,'error',6000);
+            }
+        }
+        function startNativeTaskPolling() {
+            logUserCleared=false; if (lobbyTimer) clearTimeout(lobbyTimer); if (pollTimer) clearInterval(pollTimer);
+            pollStartedAt=Date.now(); pollFailures=0; pollBusy=false; pollTimer=window.setInterval(checkStatus,1500); checkStatus();
+        }
+        function restoreNativeTask() {
+            try {
+                const saved=JSON.parse(sessionStorage.getItem('epic_pending_task'));
+                if (saved?.id && saved?.token && saved.method==='epic_oauth') { activeTask=saved; setNativeBusy(true); startNativeTaskPolling(); }
+            } catch { sessionStorage.removeItem('epic_pending_task'); }
+        }
+        function restoreNativeSession() {
+            try {
+                const saved=JSON.parse(localStorage.getItem('epic_account_session'));
+                if (!saved?.token || !saved?.email) return;
+                accountAccessToken=saved.token; accountAuthMethod='epic_oauth';
+                document.getElementById('d_email').value=saved.email; document.getElementById('q_email').value=saved.email;
+                document.getElementById('native-login-status').textContent=`Epic 官方授权已连接：${saved.email}。网页登录：${saved.web_status==='ready'?'已验证':saved.web_status==='failed'?'暂未建立，授权仍保留':'正在检查或待验证'}。`;
+                document.getElementById('asset-account-status').textContent=`当前账号：${saved.email}`;
+                document.getElementById('btn-native-delete').classList.remove('hidden');
+            } catch { localStorage.removeItem('epic_account_session'); }
+        }
+        async function deleteNativeAccount() {
+            const saved=JSON.parse(localStorage.getItem('epic_account_session') || 'null');
+            if (!saved?.token || !window.confirm(`停止托管 ${saved.email} 并删除本地登录信息？`)) return;
+            try {
+                await axios.post('/api/delete_account',{}, {headers:{Authorization:`Bearer ${saved.token}`}});
+                localStorage.removeItem('epic_account_session'); accountAccessToken=''; document.getElementById('games-grid').innerHTML=''; document.getElementById('query-result-area').classList.add('hidden'); document.getElementById('asset-account-status').textContent='尚未连接 Epic 账号';
+                document.getElementById('native-login-status').textContent='已停止托管，请重新进行官方登录以连接账号。';
+                document.getElementById('btn-native-delete').classList.add('hidden'); fetchSystemStats();
+            } catch { showToast('操作失败或授权已失效，请重新进行官方登录','error'); }
+        }
         function setDepositBusy(busy) { const form=document.getElementById('deposit-form'); const button=document.getElementById('btn-deposit'); form.classList.toggle('is-busy',busy); form.querySelectorAll('input,button').forEach(el => { el.disabled=busy; }); button.setAttribute('aria-busy',String(busy)); button.innerHTML=busy ? '<span class="loader-mark" style="width:16px;height:16px;border-width:2px"></span><span>正在启动…</span>' : START_BUTTON_HTML; }
         async function startVerify() { const email=document.getElementById('d_email').value; const password=document.getElementById('d_password').value; if (!email || !password) { showToast('请输入邮箱和密码','warning'); return; } saveRememberedEmail(email); setDepositBusy(true); logUserCleared=false; if (lobbyTimer) clearTimeout(lobbyTimer); document.getElementById('task-panel-title').textContent='当前任务'; document.getElementById('task-summary-text').textContent='正在提交账号并准备浏览器环境。'; renderTerminal('> 正在提交账号并准备浏览器环境。'); updateTaskSteps('提交账号'); try { const res=await axios.post('/api/deposit',{email,password}); if (res.data.status !== 'queued') { showToast(res.data.msg,res.data.status==='busy'?'warning':'error'); renderTerminal(`> ${res.data.msg}`); resetUI(); return; } activeTask={id:res.data.task_id,token:res.data.access_token}; document.getElementById('d_password').value=''; showToast(res.data.msg,'success'); renderTerminal(`> ${res.data.msg}`); pollStartedAt=Date.now(); pollFailures=0; pollBusy=false; pollTimer=window.setInterval(checkStatus,1500); checkStatus(); } catch (error) { showToast(error.response?.data?.msg || '任务提交失败','error'); resetUI(); } }
         async function deleteAccount() { const email=document.getElementById('d_email').value; const password=document.getElementById('d_password').value; if (!email || !password) { showToast('请输入账号密码确认身份','warning'); return; } if (!window.confirm('确定停止托管并删除该账号的本地登录信息吗？此操作不会删除 Epic 账号，但需要重新提交密码才能再次托管。')) return; try { const session=await axios.post('/api/session',{email,password}); const res=await axios.post('/api/delete_account',{}, {headers:{Authorization:`Bearer ${session.data.access_token}`}}); showToast(res.data.msg,res.data.status==='success'?'success':'error'); if (res.data.status==='success') { document.getElementById('d_email').value=''; document.getElementById('d_password').value=''; localStorage.removeItem('remembered_email'); document.getElementById('remember_email').checked=false; fetchSystemStats(); } } catch { showToast('删除失败','error'); } }
@@ -394,7 +500,7 @@
                 clearInterval(pollTimer); showToast('任务状态查询超时，请刷新页面确认结果','warning',6000); resetUI(); return;
             }
             pollBusy=true;
-            try { const res=await axios.get(`/api/tasks/${encodeURIComponent(activeTask.id)}`,{headers:{Authorization:`Bearer ${activeTask.token}`}}); const logs=Array.isArray(res.data.logs)?res.data.logs:[]; if (logs.length) { renderTerminal(logs.join('\n')); } else if (res.data.msg) { renderTerminal(`> ${res.data.msg}`); } document.getElementById('task-summary-text').textContent=res.data.msg; updateTaskSteps(res.data.msg,res.data.status); if (res.data.status==='succeeded') { clearInterval(pollTimer); try { const confirmed=await axios.post('/api/confirm_success',{task_id:activeTask.id},{headers:{Authorization:`Bearer ${activeTask.token}`}}); accountAccessToken=confirmed.data.access_token; showModal(res.data.game_title || 'Epic Free Game'); showToast('任务完成！','success'); } catch { showToast('领取成功，但账号保存失败，请重新提交一次','warning',6000); } resetUI(); fetchSystemStats(); } else if (res.data.status==='manual_required' || res.data.status==='failed') { clearInterval(pollTimer); showErrorModal(res.data.error_type || (res.data.status==='failed'?'unknown':'captcha_manual_required'),res.data.hint); resetUI(); }
+            try { const res=await axios.get(`/api/tasks/${encodeURIComponent(activeTask.id)}`,{headers:{Authorization:`Bearer ${activeTask.token}`}}); const logs=Array.isArray(res.data.logs)?res.data.logs:[]; if (logs.length) { renderTerminal(logs.join('\n')); } else if (res.data.msg) { renderTerminal(`> ${res.data.msg}`); } document.getElementById('task-summary-text').textContent=res.data.msg; updateTaskSteps(res.data.msg,res.data.status); if (res.data.status==='succeeded') { clearInterval(pollTimer); try { if (activeTask.method==='epic_oauth') { const saved=JSON.parse(localStorage.getItem('epic_account_session') || 'null'); if(saved?.email===activeTask.email) { saved.web_status='ready'; localStorage.setItem('epic_account_session',JSON.stringify(saved)); restoreNativeSession(); } doQuery(); showToast(activeTask.mode==='claim'?'领取任务完成，正在刷新库存':'网页登录会话已验证','success'); } else { const confirmed=await axios.post('/api/confirm_success',{task_id:activeTask.id},{headers:{Authorization:`Bearer ${activeTask.token}`}}); accountAccessToken=confirmed.data.access_token; accountAuthMethod='password'; localStorage.removeItem('epic_account_session'); showModal(document.getElementById('d_email').value); } } catch { showToast('任务完成，账号状态刷新失败，请刷新页面','warning',6000); } resetUI(); fetchSystemStats(); } else if (res.data.status==='manual_required' || res.data.status==='failed') { clearInterval(pollTimer); if (activeTask.method==='epic_oauth') { const saved=JSON.parse(localStorage.getItem('epic_account_session') || 'null'); if(saved?.email===activeTask.email) { saved.web_status='failed'; localStorage.setItem('epic_account_session',JSON.stringify(saved)); restoreNativeSession(); } document.getElementById('native-login-status').textContent=res.data.hint || res.data.msg; } showErrorModal(res.data.error_type || (res.data.status==='failed'?'unknown':'captcha_manual_required'),res.data.hint); resetUI(); }
             // deferred = worker 已把任务放进延迟重试队列。此前没有这个分支，
             // 状态既不是 succeeded 也不是 failed，定时器永不清除、页面无限轮询。
             else if (res.data.status==='deferred') { clearInterval(pollTimer); showToast(res.data.msg || '已安排稍后自动重试，可以关闭页面','info',8000); resetUI(); }
@@ -404,15 +510,60 @@
               else if (++pollFailures >= 20) { clearInterval(pollTimer); showToast('无法获取任务状态，请刷新页面确认结果','error',6000); resetUI(); }
             } finally { pollBusy=false; } }
         function clearTaskLog() { logUserCleared=true; renderTerminal('准备就绪。'); }
-        function resetUI() { if (pollTimer) { clearInterval(pollTimer); pollTimer=null; } activeTask=null; setDepositBusy(false); scheduleLobbyPoll(1000); }
+        function resetUI() { sessionStorage.removeItem('epic_pending_task'); setNativeBusy(false); if (pollTimer) { clearInterval(pollTimer); pollTimer=null; } activeTask=null; setDepositBusy(false); scheduleLobbyPoll(1000); }
         function openModal(id) { const modal=document.getElementById(id); lastModalFocus=document.activeElement; activeModal=modal; modal.classList.remove('hidden'); window.setTimeout(() => modal.querySelector('.modal-card')?.focus(),0); }
         function closeActiveModal(id) { const modal=document.getElementById(id); modal.classList.add('hidden'); if (activeModal===modal) activeModal=null; lastModalFocus?.focus?.(); }
-        function showModal(gameName) { document.getElementById('modal-game-name').textContent=gameName; document.getElementById('modal-game-link').href=`https://store.epicgames.com/zh-CN/browse?q=${encodeURIComponent(gameName)}&sortBy=relevancy`; openModal('success-modal'); }
+        function showModal(gameName) { document.getElementById('modal-game-name').textContent=gameName; document.getElementById('modal-game-link').href='https://store.epicgames.com/zh-CN/free-games'; openModal('success-modal'); }
         function closeModal() { closeActiveModal('success-modal'); switchTab('query'); if (document.getElementById('d_email').value) { document.getElementById('q_email').value=document.getElementById('d_email').value; doQuery(); } }
         function showErrorModal(errorType, hint) { const config=ERROR_CONFIGS[errorType] || ERROR_CONFIGS.unknown; document.getElementById('error-modal-title').textContent=config.title; document.getElementById('error-modal-desc').textContent=hint || config.desc; const icon=document.getElementById('error-modal-icon'); icon.className=`modal-icon ${config.tone==='danger'?'is-danger':'is-warning'}`; icon.innerHTML=`<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">${ICONS[config.icon] || ICONS.warning}</svg>`; document.getElementById('error-modal-steps').classList.toggle('hidden',!config.steps); openModal('error-modal'); }
         function closeErrorModal() { closeActiveModal('error-modal'); }
         function handleGlobalKeydown(event) { if (!activeModal) return; if (event.key==='Escape') { event.preventDefault(); activeModal.id==='success-modal'?closeModal():closeErrorModal(); return; } if (event.key!=='Tab') return; const focusable=[...activeModal.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),[tabindex]:not([tabindex="-1"])')].filter(el => !el.hidden); if (!focusable.length) return; const first=focusable[0], last=focusable.at(-1); if (event.shiftKey && document.activeElement===first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement===last) { event.preventDefault(); first.focus(); } }
-        async function doQuery() { const email=document.getElementById('q_email').value; const password=document.getElementById('q_password').value; const button=document.getElementById('btn-query'); if (!email || (!password && !accountAccessToken)) { showToast('请输入邮箱和密码','warning'); return; } button.disabled=true; button.setAttribute('aria-busy','true'); button.textContent='正在打开资产库…'; document.getElementById('skeleton-grid').classList.remove('hidden'); document.getElementById('query-result-area').classList.add('hidden'); try { if (password || !accountAccessToken) { const session=await axios.post('/api/session',{email,password}); accountAccessToken=session.data.access_token; document.getElementById('q_password').value=''; } const res=await axios.post('/api/query',{}, {headers:{Authorization:`Bearer ${accountAccessToken}`}}); document.getElementById('skeleton-grid').classList.add('hidden'); if (res.data.status==='success') { const logs=Array.isArray(res.data.data)?res.data.data:[]; const grid=document.getElementById('games-grid'); document.getElementById('query-result-area').classList.remove('hidden'); document.getElementById('log-count').textContent=logs.length; document.getElementById('empty-msg').classList.toggle('hidden',logs.length!==0); grid.innerHTML=logs.map(log => { const title=escapeHtml(log.game || '未知游戏'); const image=safeHttpUrl(log.image); const date=escapeHtml(String(log.time || '').split(' ')[0] || '已记录'); const url=`https://store.epicgames.com/zh-CN/browse?q=${encodeURIComponent(log.game || '')}&sortBy=relevancy`; return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="game-card" aria-label="在 Epic 商店查看 ${title}"><div class="game-cover">${image?`<img src="${escapeHtml(image)}" alt="${title}" loading="lazy" onerror="this.replaceWith(document.createRange().createContextualFragment(fallbackCover()))">`:fallbackCover()}</div><div class="game-info"><h3 class="game-name">${title}</h3><span class="game-meta"><span class="state-dot" aria-hidden="true"></span>${date}</span></div></a>`; }).join(''); showToast(`找到 ${logs.length} 个游戏`,'success'); } } catch (error) { document.getElementById('skeleton-grid').classList.add('hidden'); if (error.response?.status===401) { accountAccessToken=''; showToast(password ? '邮箱或密码与托管信息不匹配；若已修改 Epic 密码，请重新托管账号。' : '资产查询会话已失效，请重新输入密码后再试。','error',6000); } else if (error.response) { showToast('资产查询服务暂时不可用，请稍后重试。','error'); } else { showToast('无法连接资产服务，请检查网络后重试。','error'); } } finally { button.disabled=false; button.setAttribute('aria-busy','false'); button.textContent='打开资产库'; } }
+        async function doQuery() {
+            const token=accountAccessToken;
+            if (!token) { showToast('请使用控制台的 Epic 官方登录连接账号','warning'); switchTab('deposit'); return; }
+            if (accountAuthMethod!=='epic_oauth') {
+                document.getElementById('games-grid').innerHTML=''; document.getElementById('query-result-area').classList.add('hidden');
+                document.getElementById('asset-account-status').textContent='密码账号已托管';
+                document.getElementById('asset-inventory-status').textContent='查看真实库存请先进行 Epic 官方登录；当前账号托管仍有效。';
+                showToast('查看真实库存请先进行 Epic 官方登录','warning'); return;
+            }
+            const button=document.getElementById('btn-query'); button.disabled=true;
+            document.getElementById('games-grid').innerHTML=''; document.getElementById('query-result-area').classList.add('hidden');
+            document.getElementById('skeleton-grid').classList.remove('hidden');
+            document.getElementById('asset-inventory-status').textContent='正在从 Epic 加载真实库存…';
+            try {
+                const res=await axios.get('/api/library',{headers:{Authorization:`Bearer ${token}`}});
+                if(accountAccessToken!==token) return;
+                const games=res.data.data;
+                document.getElementById('query-result-area').classList.remove('hidden');
+                document.getElementById('log-count').textContent=games.length;
+                document.getElementById('empty-msg').classList.toggle('hidden',games.length!==0);
+                document.getElementById('games-grid').innerHTML=games.map(game=>{
+                    const title=escapeHtml(game.game); const image=safeHttpUrl(game.image);
+                    const url=`https://store.epicgames.com/zh-CN/browse?q=${encodeURIComponent(game.game)}&sortBy=relevancy`;
+                    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="game-card"><div class="game-cover">${image?`<img src="${escapeHtml(image)}" alt="${title}" loading="lazy">`:fallbackCover()}</div><div class="game-info"><h3 class="game-name">${title}</h3><span class="game-meta">Epic 账号库存</span></div></a>`;
+                }).join('');
+                document.getElementById('asset-inventory-status').textContent=`库存加载成功：${games.length} 个游戏。`;
+            } catch(error) {
+                if(accountAccessToken!==token) return;
+                const detail=error.response?.data?.detail;
+                const message=typeof detail==='object'?detail.message:typeof detail==='string'?detail:'库存加载失败，请稍后刷新；有效授权会保留。';
+                document.getElementById('asset-inventory-status').textContent=message; showToast(message,'error',6000);
+                if(error.response?.status===401) { accountAccessToken=''; localStorage.removeItem('epic_account_session'); document.getElementById('asset-account-status').textContent='需要重新进行 Epic 官方登录'; }
+            } finally { document.getElementById('skeleton-grid').classList.add('hidden'); button.disabled=false; }
+        }
+        async function claimCurrentAccount() {
+            if(!accountAccessToken) { showToast('请先进行 Epic 官方登录','warning'); switchTab('deposit'); return; }
+            if(accountAuthMethod!=='epic_oauth') { showToast('请先进行 Epic 官方登录再从资产页领取；密码账号仍按周期自动调度','warning'); switchTab('deposit'); return; }
+            if(activeTask) { showToast('当前账号任务仍在运行，请稍后重试','warning'); return; }
+            try {
+                const res=await axios.post('/api/claim',{}, {headers:{Authorization:`Bearer ${accountAccessToken}`}});
+                if(res.data.status!=='queued') { showToast(res.data.msg,'warning'); return; }
+                const saved=JSON.parse(localStorage.getItem('epic_account_session'));
+                activeTask={id:res.data.task_id,token:res.data.access_token,email:saved.email,method:'epic_oauth',mode:'claim'};
+                sessionStorage.setItem('epic_pending_task',JSON.stringify(activeTask)); setNativeBusy(true); switchTab('deposit'); startNativeTaskPolling();
+            } catch { showToast('领取任务提交失败，请稍后重试','error'); }
+        }
         {% endraw %}
     </script>
 </body>

@@ -22,6 +22,10 @@ from pydantic import BaseModel, field_validator
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.utils import cleanup_debug_artifacts, cleanup_old_logs
+from app.epic_native_auth import (
+    NativeAuthError, authorize as authorize_epic, login_url, parse_authorization_code,
+    account_library, session_lock,
+)
 from app.secure_store import (
     CredentialCipher,
     CredentialError,
@@ -48,6 +52,7 @@ from app.secure_store import (
     task_for_token,
     update_task,
     verify_account_password,
+    save_native_account,
 )
 
 # 站点经反代对公网开放，交互式文档会把包含 /api/nuke_account、/api/admin/* 在内的
@@ -263,7 +268,7 @@ async def anti_abuse_middleware(request: Request, call_next):
                 status_code=429,
                 content={"status": "rate_limited", "msg": "⏳ 请求过于频繁，请稍后重试"},
             )
-    elif path.startswith("/api/") and request.url.path not in {"/api/deposit", "/api/session"}:
+    elif path.startswith("/api/") and request.url.path not in {"/api/deposit", "/api/session", "/api/epic/login"}:
         read_key = f"rate_read:{request.client.host}"
         read_count = r.incr(read_key)
         if read_count == 1:
@@ -275,7 +280,7 @@ async def anti_abuse_middleware(request: Request, call_next):
             )
 
     # 对提交任务和密码换取会话令牌的入口统一限流。
-    if request.url.path in {"/api/deposit", "/api/session"} and request.method == "POST":
+    if request.url.path in {"/api/deposit", "/api/session", "/api/epic/login"} and request.method == "POST":
         client_ip = request.client.host
 
         # 1. 检查是否被长期封禁（最长 7 天）
@@ -486,6 +491,92 @@ def deposit(account: Account, request: Request):
         "task_id": run_id,
         "access_token": access_token,
     }
+
+
+class EpicLoginRequest(BaseModel):
+    authorization_code: str
+    login_state: str
+
+    @field_validator("authorization_code")
+    @classmethod
+    def validate_code(cls, value: str) -> str:
+        return parse_authorization_code(value)
+
+    @field_validator("login_state")
+    @classmethod
+    def validate_state(cls, value: str) -> str:
+        if not value or len(value) > 128:
+            raise ValueError("Invalid login state")
+        return value
+
+
+def _require_login_origin(request: Request) -> None:
+    origin = request.headers.get("origin")
+    if origin and origin != str(request.base_url).rstrip("/"):
+        raise HTTPException(status_code=403, detail="Invalid login origin")
+
+
+@app.post("/api/epic/login/start")
+def start_epic_login(request: Request):
+    _require_login_origin(request)
+    state = secrets.token_urlsafe(32)
+    r.setex(f"epic_login:{state}", 600, request.client.host)
+    return {"login_url": login_url(), "login_state": state}
+
+
+@app.post("/api/epic/login")
+async def epic_login(payload: EpicLoginRequest, request: Request):
+    _require_login_origin(request)
+    if r.getdel(f"epic_login:{payload.login_state}") != request.client.host:
+        raise HTTPException(status_code=401, detail="登录步骤已过期，请重新点击 Epic 官方登录")
+    try:
+        async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
+            email, session = await authorize_epic(payload.authorization_code, client)
+    except NativeAuthError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    if r.exists(f"task_lock:{account_ref(email)}"):
+        return {"status": "busy", "msg": "该账号已有任务，请等待完成后重新授权"}
+    async with session_lock(DB_PATH, session["account_id"]):
+        save_native_account(DB_PATH, get_cipher(), email, session)
+    run_id, token = create_task_run(
+        DB_PATH, get_cipher(), email, "verify",
+        auth_method="epic_oauth",
+    )
+    if not _enqueue_task(run_id, email):
+        update_task(DB_PATH, run_id, state="failed", error_type="duplicate_task")
+        return {"status": "busy", "msg": "该账号已有任务，请等待完成后重新授权"}
+    return {"status": "queued", "msg": "Epic 官方授权成功，正在检查网页登录；库存可独立加载",
+            "task_id": run_id, "access_token": token, "email": email,
+            "account_access_token": issue_account_token(DB_PATH, email),
+            "oauth_status": "authorized", "web_session_status": "pending"}
+
+
+@app.get("/api/library")
+async def get_library(authorization: str | None = Header(default=None)):
+    account = account_for_token(DB_PATH, _bearer_token(authorization))
+    if not account:
+        raise HTTPException(status_code=401, detail="Invalid account token")
+    try:
+        async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
+            games = await account_library(DB_PATH, get_cipher(), account["email"], client)
+    except NativeAuthError as exc:
+        raise HTTPException(status_code=401 if exc.error_type == "native_auth_expired" else 502,
+                            detail={"error_type": exc.error_type, "stage": exc.stage, "message": str(exc)}) from None
+    return {"status": "success", "oauth_status": "authorized", "inventory_status": "loaded", "data": games}
+
+
+@app.post("/api/claim")
+def claim_current_account(authorization: str | None = Header(default=None)):
+    account = account_for_token(DB_PATH, _bearer_token(authorization))
+    if not account:
+        raise HTTPException(status_code=401, detail="Invalid account token")
+    if r.exists(f"task_lock:{account_ref(account['email'])}"):
+        return {"status": "busy", "msg": "当前账号任务仍在执行，请稍后重试"}
+    run_id, token = create_task_run(DB_PATH, get_cipher(), account["email"], "claim")
+    if not _enqueue_task(run_id, account["email"]):
+        update_task(DB_PATH, run_id, state="failed", error_type="duplicate_task")
+        return {"status": "busy", "msg": "当前账号任务仍在执行，请稍后重试"}
+    return {"status": "queued", "msg": "正在复用当前账号授权检查并领取免费游戏", "task_id": run_id, "access_token": token}
 
 @app.post("/api/delete_account")
 def delete_account(authorization: str | None = Header(default=None)):

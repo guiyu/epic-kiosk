@@ -214,6 +214,9 @@ def ensure_schema(db_path: str) -> None:
             """
         )
 
+        if "auth_method" not in _columns(conn, "pending_credentials"):
+            conn.execute("ALTER TABLE pending_credentials ADD COLUMN auth_method TEXT NOT NULL DEFAULT 'password'")
+
 
 @dataclass(frozen=True)
 class TaskContext:
@@ -224,6 +227,7 @@ class TaskContext:
     mode: str
     attempt: int
     retry_data: dict[str, object]
+    auth_method: str = "password"
 
     @property
     def account_ref(self) -> str:
@@ -239,7 +243,7 @@ def verify_account_password(
     db_path: str, cipher: CredentialCipher, email: str, password: str
 ) -> bool:
     row = get_account(db_path, email)
-    if not row or not row["credential_ciphertext"]:
+    if not row or row["auth_method"] != "password" or not row["credential_ciphertext"]:
         return False
     actual = cipher.decrypt(row["credential_ciphertext"])
     return secrets.compare_digest(actual, password)
@@ -253,8 +257,11 @@ def create_task_run(
     password: str | None = None,
     parent_run_id: str | None = None,
     attempt: int = 0,
+    auth_method: str = "password",
 ) -> tuple[str, str]:
     email = normalize_email(email)
+    if auth_method not in {"password", "epic_oauth"}:
+        raise ValueError("Unsupported authentication method")
     if mode not in {"verify", "claim"}:
         raise ValueError("Unsupported task mode")
     run_id = str(uuid.uuid4())
@@ -281,8 +288,8 @@ def create_task_run(
             conn.execute(
                 """
                 INSERT INTO pending_credentials(
-                    run_id, email, credential_ciphertext, profile_id, expires_at
-                ) VALUES (?, ?, ?, ?, ?)
+                    run_id, email, credential_ciphertext, profile_id, expires_at, auth_method
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -290,6 +297,7 @@ def create_task_run(
                     cipher.encrypt(password),
                     account["profile_id"] if account and account["profile_id"] else str(uuid.uuid4()),
                     expires_at,
+                    auth_method,
                 ),
             )
     return run_id, access_token
@@ -301,7 +309,8 @@ def load_task_context(db_path: str, cipher: CredentialCipher, run_id: str) -> Ta
             """
             SELECT tr.*, pc.credential_ciphertext AS pending_ciphertext,
                    a.credential_ciphertext AS account_ciphertext,
-                   COALESCE(pc.profile_id, a.profile_id) AS resolved_profile_id
+                   COALESCE(pc.profile_id, a.profile_id) AS resolved_profile_id,
+                   COALESCE(pc.auth_method, a.auth_method) AS resolved_auth_method
             FROM task_runs tr
             LEFT JOIN pending_credentials pc ON pc.run_id=tr.run_id
             LEFT JOIN accounts a ON a.email=tr.email
@@ -331,6 +340,7 @@ def load_task_context(db_path: str, cipher: CredentialCipher, run_id: str) -> Ta
         mode=row["mode"],
         attempt=row["attempt"],
         retry_data=retry_data,
+        auth_method=row["resolved_auth_method"] or "password",
     )
 
 
@@ -378,7 +388,17 @@ def update_task(
         if cursor.rowcount != 1:
             raise KeyError("Task does not exist")
         if state in {"failed", "manual_required"}:
-            conn.execute("DELETE FROM pending_credentials WHERE run_id=?", (run_id,))
+            # A failed web handoff does not invalidate the refreshed OAuth
+            # credential. Keep it encrypted until its existing expiry for retry.
+            conn.execute(
+                """DELETE FROM pending_credentials WHERE run_id=? AND NOT (
+                    auth_method='epic_oauth' AND EXISTS (
+                        SELECT 1 FROM task_runs WHERE run_id=? AND error_type IN (
+                            'native_web_session_failed', 'native_auth_failed', 'network_timeout'
+                        )
+                    )
+                )""", (run_id, run_id),
+            )
 
 
 def task_for_token(db_path: str, run_id: str, token: str) -> sqlite3.Row | None:
@@ -428,21 +448,60 @@ def confirm_pending_account(db_path: str, run_id: str, token: str) -> str:
             INSERT INTO accounts (
                 email, password, auth_method, credential_ciphertext,
                 credential_version, profile_id
-            ) VALUES (?, NULL, 'password', ?, 1, ?)
+            ) VALUES (?, NULL, ?, ?, 1, ?)
             ON CONFLICT(email) DO UPDATE SET
                 password=NULL,
+                auth_method=excluded.auth_method,
                 credential_ciphertext=excluded.credential_ciphertext,
                 credential_version=excluded.credential_version,
                 profile_id=COALESCE(accounts.profile_id, excluded.profile_id)
             """,
             (
                 row["email"],
+                pending["auth_method"],
                 pending["credential_ciphertext"],
                 profile_id,
             ),
         )
         conn.execute("DELETE FROM pending_credentials WHERE run_id=?", (run_id,))
     return row["email"]
+
+
+def replace_native_credential(db_path: str, cipher: CredentialCipher, run_id: str, credential: str) -> None:
+    """Persist rotated OAuth credentials before trying to establish browser cookies."""
+    ciphertext = cipher.encrypt(credential)
+    with connect(db_path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        cursor = conn.execute(
+            "UPDATE pending_credentials SET credential_ciphertext=? WHERE run_id=? AND auth_method='epic_oauth'",
+            (ciphertext, run_id),
+        )
+        pending_updated = cursor.rowcount
+        cursor = conn.execute(
+                """UPDATE accounts SET credential_ciphertext=? WHERE auth_method='epic_oauth'
+                   AND email=(SELECT email FROM task_runs WHERE run_id=?)""",
+                (ciphertext, run_id),
+            )
+        if not cursor.rowcount and not pending_updated:
+            raise CredentialError("Native credential is unavailable")
+
+
+def save_native_account(db_path: str, cipher: CredentialCipher, email: str, session: dict) -> None:
+    """Save an account whose identity was verified by Epic's OAuth API."""
+    email = normalize_email(email)
+    with connect(db_path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        old = conn.execute("SELECT * FROM accounts WHERE email=?", (email,)).fetchone()
+        profile_id = old["profile_id"] if old else str(uuid.uuid4())
+        if old and old["auth_method"] == "epic_oauth":
+            if json.loads(cipher.decrypt(old["credential_ciphertext"]))["account_id"] != session["account_id"]:
+                profile_id = str(uuid.uuid4())
+        conn.execute(
+            """INSERT INTO accounts(email,password,auth_method,credential_ciphertext,credential_version,profile_id)
+               VALUES (?,NULL,'epic_oauth',?,1,?) ON CONFLICT(email) DO UPDATE SET
+               password=NULL,auth_method='epic_oauth',credential_ciphertext=excluded.credential_ciphertext,
+               profile_id=excluded.profile_id""", (email,cipher.encrypt(json.dumps(session)),profile_id),
+        )
 
 
 def record_game_result(
