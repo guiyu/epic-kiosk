@@ -117,6 +117,7 @@ CLAIM_BATCH_INTERVAL_SECONDS = max(
 PROMOTION_REFRESH_INTERVAL_SECONDS = max(
     300, int(os.getenv("PROMOTION_REFRESH_INTERVAL_SECONDS", "3600"))
 )
+PROMOTION_PROXY_URL = os.getenv("PROMOTION_PROXY_URL", "").strip() or None
 SCHEDULED_TASK_QUEUE = "task_scheduled_queue"
 # 读接口每 IP 每分钟配额。前端正常节奏是 system_stats 每 30 秒一次 +
 # 任务进行中 tasks/{id} 每 1.5 秒一次，一分钟约 42 次，留足余量。
@@ -1465,7 +1466,9 @@ async def _fetch_current_free_games_once() -> list[dict[str, str]]:
         "User-Agent": "Mozilla/5.0 EpicKiosk/1.0",
         "Accept": "application/json",
     }
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True, trust_env=False) as client:
+    async with httpx.AsyncClient(
+        timeout=15, follow_redirects=True, trust_env=False, proxy=PROMOTION_PROXY_URL
+    ) as client:
         response = await client.get(api_url, headers=headers)
         response.raise_for_status()
         if "json" not in response.headers.get("content-type", "").lower():
@@ -1481,8 +1484,13 @@ async def _fetch_current_free_game_samples() -> list[list[dict[str, str]]]:
     for attempt in range(3):
         try:
             samples.append(await _fetch_current_free_games_once())
-        except (httpx.HTTPError, ValueError):
-            pass
+        except (httpx.HTTPError, ValueError) as exc:
+            detail = (
+                f" status={exc.response.status_code}"
+                if isinstance(exc, httpx.HTTPStatusError)
+                else f" reason={exc}" if isinstance(exc, ValueError) else ""
+            )
+            print(f"Promotion fetch attempt {attempt + 1} failed: {type(exc).__name__}{detail}")
         if attempt < 2:
             await asyncio.sleep(0.5)
     return samples
